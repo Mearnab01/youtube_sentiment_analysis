@@ -1,0 +1,8 @@
+# Ignore temp system files
+.DS_Store
+
+# Ignore git internal files
+.git/
+
+# Ignore log files inside data directories
+*.log

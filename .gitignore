@@ -1,0 +1,26 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.env
+venv/
+env/
+mlops_env/
+
+# Packaging & Build (CRITICAL)
+*.egg-info/
+dist/
+build/
+
+# IDEs
+.vscode/
+.idea/
+
+# Large Files & ML Data (We use DVC for these)
+data/
+*.pkl
+*.db
+logs/
+experiment_info.json

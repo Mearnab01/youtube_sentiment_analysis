@@ -1,5 +1,0 @@
-setup.py
-src/youtube_sentiment.egg-info/PKG-INFO
-src/youtube_sentiment.egg-info/SOURCES.txt
-src/youtube_sentiment.egg-info/dependency_links.txt
-src/youtube_sentiment.egg-info/top_level.txt
