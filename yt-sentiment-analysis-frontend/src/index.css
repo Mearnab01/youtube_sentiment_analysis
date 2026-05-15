@@ -1,0 +1,11 @@
+/* src/index.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Reset chrome extension defaults */
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  background: #000000;
+}
