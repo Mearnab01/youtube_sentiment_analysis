@@ -63,6 +63,7 @@ def save_data(train_df:pd.DataFrame, test_df:pd.DataFrame, data_path:str)-> None
     
 def main():
     try:
+        logger.info(">> Data Ingestion Phase...")
         params = load_params(PARAMS_PATH)
 
         test_size = params["data_ingestion"]["test_size"]
