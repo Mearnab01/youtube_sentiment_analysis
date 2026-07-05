@@ -19,7 +19,6 @@ build/
 .idea/
 
 # Large Files & ML Data (We use DVC for these)
-data/
 *.pkl
 *.db
 logs/

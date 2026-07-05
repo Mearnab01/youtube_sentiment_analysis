@@ -1,26 +1,28 @@
 stages:
   data_ingestion:
-    cmd: python src/youtube/components/data_ingestion.py
+    cmd: python -m src.data.data_ingestion
     deps:
-      - src/youtube/components/data_ingestion.py
+      - src/data/data_ingestion.py
+      - params.yaml
     params:
       - data_ingestion.test_size
     outs:
       - data/raw
 
   data_preprocessing:
-    cmd: python src/youtube/components/data_preprocessing.py
+    cmd: python -m src.data.data_preprocessing
     deps:
+      - src/data/data_preprocessing.py
       - data/raw
-      - src/youtube/components/data_preprocessing.py
     outs:
       - data/interim
 
   model_building:
-    cmd: python src/youtube/components/model_building.py
+    cmd: python -m src.data.model_building
     deps:
+      - src/data/model_building.py
       - data/interim
-      - src/youtube/components/model_building.py
+      - params.yaml
     params:
       - model_building.max_features
       - model_building.ngram_range
@@ -28,16 +30,16 @@ stages:
       - model_building.max_depth
       - model_building.n_estimators
     outs:
-      - lgbm_model.pkl
-      - tfidf_vectorizer.pkl
+      - artifacts/lgbm_model.pkl
+      - artifacts/tfidf_vectorizer.pkl
 
   model_evaluation:
-    cmd: python src/youtube/components/model_evaluation.py
+    cmd: python -m src.data.model_evaluation
     deps:
-      - lgbm_model.pkl
-      - tfidf_vectorizer.pkl
+      - src/data/model_evaluation.py
+      - artifacts/lgbm_model.pkl
+      - artifacts/tfidf_vectorizer.pkl
       - data/interim
-      - src/youtube/components/model_evaluation.py
     metrics:
-      - experiment_info.json:
+      - artifacts/experiment_info.json:
           cache: false
