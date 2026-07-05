@@ -1,0 +1,19 @@
+cmd: python -m src.data.data_ingestion
+deps:
+- path: params.yaml
+  hash: md5
+  md5: a44084784e30d6ddd3b055660e9c8014
+  size: 453
+- path: src/data/data_ingestion.py
+  hash: md5
+  md5: c26ab1ac4d03003616461ae3982959a6
+  size: 2925
+params:
+  params.yaml:
+    data_ingestion.test_size: 0.2
+outs:
+- path: data/raw
+  hash: md5
+  md5: e13bcce40396cd334c8a7a334868166a.dir
+  size: 6919701
+  nfiles: 2

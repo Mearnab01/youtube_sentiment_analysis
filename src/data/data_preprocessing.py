@@ -83,7 +83,7 @@ def main():
         save_data(
             train_preprocessed_data,
             test_preprocessed_data,
-            data_path="./data"
+            DATA_DIR
         )
     except Exception as e:
         logger.error(f"Error in main function: {e}")
