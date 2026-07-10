@@ -2,10 +2,8 @@
 
 document.addEventListener("DOMContentLoaded", async () => {
   const outputDiv = document.getElementById("output");
-  const API_KEY = 'AIzaSyAHxO8ZCKPLODbhgSQcDV49Bv8cgkOA8Z4';  // Replace with your actual YouTube Data API key
-  // const API_URL = 'http://my-elb-2062136355.us-east-1.elb.amazonaws.com:80';
-  // const API_URL = 'http://localhost:5000/';
-  const API_URL = 'http://23.20.221.231:8080/';
+  const API_KEY = 'AIzaSyDAdRpmLSD0SdaX_1shixX5TGoN-qTftIM';
+  const API_URL = 'http://localhost:8080'; // FIXED: was a dead remote IP with a trailing slash
 
   /* --------------------------------------------------------------------
    * Presentation helpers (markup only — no business logic here)
@@ -34,8 +32,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       </div>`;
   }
 
-  // Maps the existing sentiment values (-1, 0, 1) to a label + style,
-  // purely for display — does not change how sentiment is computed.
   function sentimentMeta(rawValue) {
     const value = parseInt(rawValue);
     if (value > 0) return { label: "Positive", modifier: "positive" };
@@ -85,9 +81,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (predictions) {
         document.getElementById("status-area").innerHTML = "";
 
-        // Process the predictions to get sentiment counts and sentiment data
         const sentimentCounts = { "1": 0, "0": 0, "-1": 0 };
-        const sentimentData = []; // For trend graph
+        const sentimentData = [];
         const totalSentimentScore = predictions.reduce((sum, item) => sum + parseInt(item.sentiment), 0);
         predictions.forEach((item, index) => {
           sentimentCounts[item.sentiment]++;
@@ -97,17 +92,13 @@ document.addEventListener("DOMContentLoaded", async () => {
           });
         });
 
-        // Compute metrics
         const totalComments = comments.length;
         const uniqueCommenters = new Set(comments.map(comment => comment.authorId)).size;
         const totalWords = comments.reduce((sum, comment) => sum + comment.text.split(/\s+/).filter(word => word.length > 0).length, 0);
         const avgWordLength = (totalWords / totalComments).toFixed(2);
         const avgSentimentScore = (totalSentimentScore / totalComments).toFixed(2);
-
-        // Normalize the average sentiment score to a scale of 0 to 10
         const normalizedSentimentScore = (((parseFloat(avgSentimentScore) + 1) / 2) * 10).toFixed(2);
 
-        // Add the Comment Analysis Summary section
         outputDiv.innerHTML += `
           <div class="section">
             ${sectionHeader("Comment Analysis Summary")}
@@ -132,7 +123,6 @@ document.addEventListener("DOMContentLoaded", async () => {
           </div>
         `;
 
-        // Add the Sentiment Analysis Results section with a placeholder for the chart
         outputDiv.innerHTML += `
           <div class="section">
             ${sectionHeader("Sentiment Distribution")}
@@ -140,11 +130,8 @@ document.addEventListener("DOMContentLoaded", async () => {
               <div id="chart-container" class="image-card">${imageLoadingPlaceholder("Rendering chart&hellip;")}</div>
             </div>
           </div>`;
-
-        // Fetch and display the pie chart inside the chart-container div
         await fetchAndDisplayChart(sentimentCounts);
 
-        // Add the Sentiment Trend Graph section
         outputDiv.innerHTML += `
           <div class="section">
             ${sectionHeader("Sentiment Trend Over Time")}
@@ -152,11 +139,8 @@ document.addEventListener("DOMContentLoaded", async () => {
               <div id="trend-graph-container" class="image-card">${imageLoadingPlaceholder("Rendering trend&hellip;")}</div>
             </div>
           </div>`;
-
-        // Fetch and display the sentiment trend graph
         await fetchAndDisplayTrendGraph(sentimentData);
 
-        // Add the Word Cloud section
         outputDiv.innerHTML += `
           <div class="section">
             ${sectionHeader("Comment Wordcloud")}
@@ -164,11 +148,8 @@ document.addEventListener("DOMContentLoaded", async () => {
               <div id="wordcloud-container" class="image-card">${imageLoadingPlaceholder("Building wordcloud&hellip;")}</div>
             </div>
           </div>`;
-
-        // Fetch and display the word cloud inside the wordcloud-container div
         await fetchAndDisplayWordCloud(comments.map(comment => comment.text));
 
-        // Add the top comments section
         outputDiv.innerHTML += `
           <div class="section">
             ${sectionHeader("Top 25 Comments")}
@@ -224,14 +205,16 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   async function getSentimentPredictions(comments) {
     try {
+      const validComments = comments.filter(c => c.text && c.text.trim().length > 0);
+
       const response = await fetch(`${API_URL}/predict_with_timestamps`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comments })
+        body: JSON.stringify({ comments: validComments })
       });
       const result = await response.json();
       if (response.ok) {
-        return result; // The result now includes sentiment and timestamp
+        return result;
       } else {
         throw new Error(result.error || 'Error fetching predictions');
       }
@@ -259,7 +242,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       const img = document.createElement('img');
       img.src = imgURL;
       img.alt = "Sentiment distribution chart";
-      // Replace the loading placeholder with the fetched image
       chartContainer.innerHTML = "";
       chartContainer.appendChild(img);
     } catch (error) {
