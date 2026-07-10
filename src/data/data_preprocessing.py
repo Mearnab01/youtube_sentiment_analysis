@@ -44,8 +44,10 @@ def preprocess_comment(text):
     
 def normalize_text(df):
     try:
+        df = df.copy()
         df['clean_comment'] = df['clean_comment'].apply(preprocess_comment)
         logger.info("Preprocess Completed..")
+        return df
     except Exception as e:
         logger.error(f"Error in normalizing text: {e}")
         return None

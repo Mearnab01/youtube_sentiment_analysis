@@ -18,28 +18,23 @@ stages:
       - data/interim
 
   model_building:
-    cmd: python -m src.data.model_building
+    cmd: python -m src.model.model_building
     deps:
-      - src/data/model_building.py
+      - src/model/model_building.py
       - data/interim
       - params.yaml
-    params:
-      - model_building.max_features
-      - model_building.ngram_range
-      - model_building.learning_rate
-      - model_building.max_depth
-      - model_building.n_estimators
     outs:
-      - artifacts/lgbm_model.pkl
-      - artifacts/tfidf_vectorizer.pkl
+      - models/lgbm_model.pkl
+      - models/tfidf_vectorizer.pkl
 
   model_evaluation:
-    cmd: python -m src.data.model_evaluation
+    cmd: python -m src.model.model_evaluation
     deps:
-      - src/data/model_evaluation.py
-      - artifacts/lgbm_model.pkl
-      - artifacts/tfidf_vectorizer.pkl
+      - src/model/model_evaluation.py
+      - models/lgbm_model.pkl
+      - models/tfidf_vectorizer.pkl
       - data/interim
-    metrics:
-      - artifacts/experiment_info.json:
-          cache: false
+    outs:
+      - artifacts/classification_report.json
+      - artifacts/confusion_matrix.png
+      - artifacts/experiment_info.json

@@ -30,11 +30,69 @@ stages:
       nfiles: 2
     - path: src/data/data_preprocessing.py
       hash: md5
-      md5: 87052085aa2ef349fb96ee6e3d1eff08
-      size: 2772
+      md5: 337181b5037447a46cf6da2695098ee1
+      size: 2815
     outs:
     - path: data/interim
       hash: md5
-      md5: d751713988987e9331980363e24189ce.dir
-      size: 0
-      nfiles: 0
+      md5: ba42408e7bd1e85685474d6a349ae57e.dir
+      size: 5134850
+      nfiles: 2
+  model_building:
+    cmd: python -m src.model.model_building
+    deps:
+    - path: data/interim
+      hash: md5
+      md5: ba42408e7bd1e85685474d6a349ae57e.dir
+      size: 5134850
+      nfiles: 2
+    - path: params.yaml
+      hash: md5
+      md5: a44084784e30d6ddd3b055660e9c8014
+      size: 453
+    - path: src/model/model_building.py
+      hash: md5
+      md5: 65281cbc265d0a9f66bf7f1e095ac48e
+      size: 4838
+    outs:
+    - path: models/lgbm_model.pkl
+      hash: md5
+      md5: 90cab54974ab3aa8d2a8693c189ce482
+      size: 4797690
+    - path: models/tfidf_vectorizer.pkl
+      hash: md5
+      md5: d3179cf025248cccb4e8c01edb59e105
+      size: 18666943
+  model_evaluation:
+    cmd: python -m src.model.model_evaluation
+    deps:
+    - path: data/interim
+      hash: md5
+      md5: ba42408e7bd1e85685474d6a349ae57e.dir
+      size: 5134850
+      nfiles: 2
+    - path: models/lgbm_model.pkl
+      hash: md5
+      md5: 90cab54974ab3aa8d2a8693c189ce482
+      size: 4797690
+    - path: models/tfidf_vectorizer.pkl
+      hash: md5
+      md5: d3179cf025248cccb4e8c01edb59e105
+      size: 18666943
+    - path: src/model/model_evaluation.py
+      hash: md5
+      md5: 00cbb04fdc643d8afa58e2565f770975
+      size: 5675
+    outs:
+    - path: artifacts/classification_report.json
+      hash: md5
+      md5: e1e50e5e0132135e085db979253915cb
+      size: 898
+    - path: artifacts/confusion_matrix.png
+      hash: md5
+      md5: 373cbfc3b4794726eb4b34c3e4110046
+      size: 21338
+    - path: artifacts/experiment_info.json
+      hash: md5
+      md5: 92d4bed28ec5d2e5ea179b62385846b5
+      size: 1056
