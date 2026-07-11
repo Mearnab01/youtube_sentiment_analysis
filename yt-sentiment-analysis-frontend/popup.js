@@ -2,8 +2,10 @@
 
 document.addEventListener("DOMContentLoaded", async () => {
   const outputDiv = document.getElementById("output");
+
   const API_KEY = 'AIzaSyDAdRpmLSD0SdaX_1shixX5TGoN-qTftIM';
-  const API_URL = 'http://localhost:8080'; // FIXED: was a dead remote IP with a trailing slash
+  const API_URL = 'http://localhost:8080';
+  const MAX_COMMENTS_TO_FETCH = 2000; 
 
   /* --------------------------------------------------------------------
    * Presentation helpers (markup only — no business logic here)
@@ -47,6 +49,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     return `<div class="image-card__loading"><span class="spinner"></span><span>${label}</span></div>`;
   }
 
+  // CHANGED: formats large numbers like YouTube does (1.4m, 21k, etc.)
+  function formatCount(num) {
+    num = Number(num) || 0;
+    if (num >= 1_000_000) return (num / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'm';
+    if (num >= 1_000) return (num / 1_000).toFixed(1).replace(/\.0$/, '') + 'k';
+    return String(num);
+  }
+
   // Get the current tab's URL
   chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
     const url = tabs[0].url;
@@ -60,8 +70,11 @@ document.addEventListener("DOMContentLoaded", async () => {
           <span class="video-id-row__label">Video ID</span>
           <span class="video-id-row__value">${videoId}</span>
         </div>
+        <div id="video-stats-area"></div>
         <div id="status-area">${statusLine("Fetching comments&hellip;")}</div>
       `;
+
+      fetchAndDisplayVideoStats(videoId);
 
       const comments = await fetchComments(videoId);
       if (comments.length === 0) {
@@ -98,6 +111,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         const avgWordLength = (totalWords / totalComments).toFixed(2);
         const avgSentimentScore = (totalSentimentScore / totalComments).toFixed(2);
         const normalizedSentimentScore = (((parseFloat(avgSentimentScore) + 1) / 2) * 10).toFixed(2);
+
+        await fetchAndDisplayInsights(predictions, comments, sentimentCounts);
 
         outputDiv.innerHTML += `
           <div class="section">
@@ -177,11 +192,37 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
+  async function fetchAndDisplayVideoStats(videoId) {
+    const statsArea = document.getElementById('video-stats-area');
+    try {
+      const response = await fetch(
+        `https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${videoId}&key=${API_KEY}`
+      );
+      const data = await response.json();
+      const stats = data.items?.[0]?.statistics;
+
+      if (!stats) {
+        statsArea.innerHTML = "";
+        return;
+      }
+
+      statsArea.innerHTML = `
+        <div class="video-stats-row" style="display:flex; gap:16px; margin:8px 0; font-size:13px; color:var(--text-faint);">
+          <span> ${formatCount(stats.viewCount)} views</span>
+          <span> ${formatCount(stats.likeCount)} likes</span>
+          <span> ${formatCount(stats.commentCount)} comments</span>
+        </div>`;
+    } catch (error) {
+      console.error("Error fetching video stats:", error);
+      statsArea.innerHTML = "";
+    }
+  }
+
   async function fetchComments(videoId) {
     let comments = [];
     let pageToken = "";
     try {
-      while (comments.length < 500) {
+      while (comments.length < MAX_COMMENTS_TO_FETCH) {
         const response = await fetch(`https://www.googleapis.com/youtube/v3/commentThreads?part=snippet&videoId=${videoId}&maxResults=100&pageToken=${pageToken}&key=${API_KEY}`);
         const data = await response.json();
         if (data.items) {
@@ -189,7 +230,8 @@ document.addEventListener("DOMContentLoaded", async () => {
             const commentText = item.snippet.topLevelComment.snippet.textOriginal;
             const timestamp = item.snippet.topLevelComment.snippet.publishedAt;
             const authorId = item.snippet.topLevelComment.snippet.authorChannelId?.value || 'Unknown';
-            comments.push({ text: commentText, timestamp: timestamp, authorId: authorId });
+            const likeCount = item.snippet.topLevelComment.snippet.likeCount || 0; // CHANGED: added
+            comments.push({ text: commentText, timestamp: timestamp, authorId: authorId, likeCount: likeCount });
           });
         }
         pageToken = data.nextPageToken;
@@ -223,6 +265,49 @@ document.addEventListener("DOMContentLoaded", async () => {
       const statusArea = document.getElementById("status-area");
       if (statusArea) statusArea.innerHTML = errorAlert("Error fetching sentiment predictions.");
       return null;
+    }
+  }
+
+  async function fetchAndDisplayInsights(predictions, comments, sentimentCounts) {
+    const likeCountByText = {};
+    comments.forEach(c => { likeCountByText[c.text] = c.likeCount || 0; });
+    const enrichedPredictions = predictions.map(p => ({
+      ...p,
+      likeCount: likeCountByText[p.comment] || 0
+    }));
+
+    outputDiv.innerHTML += `
+      <div class="section">
+        ${sectionHeader("AI Insight")}
+        <div id="insight-container" class="card">${statusLine("Generating insight&hellip;")}</div>
+      </div>
+    `;
+
+    const insightContainer = document.getElementById('insight-container');
+    try {
+      const response = await fetch(`${API_URL}/generate_insights`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ predictions: enrichedPredictions, sentiment_counts: sentimentCounts })
+      });
+      const result = await response.json();
+
+      if (!response.ok) throw new Error(result.error || 'Insight generation failed');
+
+      let html = `<p style="margin:0 0 8px 0;">${result.summary}</p>`;
+      if (result.top_negative_comment) {
+        html += `
+          <div style="border-left:3px solid #ff6384; padding-left:10px; margin-top:8px;">
+            <div style="font-size:12px; color:var(--text-faint); margin-bottom:2px;">
+              Most-liked critical comment (${result.top_negative_comment.likeCount || 0} likes)
+            </div>
+            <div>${result.top_negative_comment.comment}</div>
+          </div>`;
+      }
+      insightContainer.innerHTML = html;
+    } catch (error) {
+      console.error("Error generating insights:", error);
+      insightContainer.innerHTML = errorAlert("Couldn't generate AI insight.");
     }
   }
 

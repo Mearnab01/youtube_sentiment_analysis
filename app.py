@@ -1,5 +1,6 @@
 import io
 import re
+import os
 import json
 import time
 from pathlib import Path
@@ -23,23 +24,30 @@ from nltk.stem import WordNetLemmatizer
 from nltk.corpus import wordnet
 from src.utils.logger import get_logger
 
+from groq import Groq
+from dotenv import load_dotenv
+load_dotenv()
 
-logger = get_logger('Sentiment Analysis API')
-wordnet.ensure_loaded()
-logger.info("WordNet corpus pre-loaded at startup.")
-
+# configure paths and constants
 ROOT_DIR = Path(__file__).resolve().parent
 MODEL_PATH = ROOT_DIR / "models" / "lgbm_model.pkl"
 VECTORIZER_PATH = ROOT_DIR / "models" / "tfidf_vectorizer.pkl"
 EXPERIMENT_INFO_PATH = ROOT_DIR / "artifacts" / "experiment_info.json"
  
-MAX_BATCH_SIZE = 500       
-MAX_COMMENT_LENGTH = 5000  
+MAX_BATCH_SIZE = 2000
+MAX_COMMENT_LENGTH = 10000  
 SERVER_START_TIME = time.time()
+ 
+GROQ_MODEL = "llama-3.3-70b-versatile"
 
+logger = get_logger('Sentiment Analysis API')
 
 app = Flask(__name__)
 CORS(app)
+
+groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+wordnet.ensure_loaded()
+logger.info("WordNet corpus pre-loaded at startup.")
 
 STOP_WORDS = set(stopwords.words('english')) - {'not', 'but', 'however', 'no', 'yet'}
 LEMMATIZER = WordNetLemmatizer()
@@ -327,53 +335,143 @@ def generate_trend_graph():
     try:
         data = request.get_json(silent=True) or {}
         sentiment_data = data.get('sentiment_data')
- 
+
         if not sentiment_data:
             return jsonify({"error": "No sentiment data provided"}), 400
- 
+
         df = pd.DataFrame(sentiment_data)
         df['timestamp'] = pd.to_datetime(df['timestamp'])
         df.set_index('timestamp', inplace=True)
         df['sentiment'] = df['sentiment'].astype(int)
- 
-        monthly_counts = df.resample('ME')['sentiment'].value_counts().unstack(fill_value=0)
+
+        date_span_days = (df.index.max() - df.index.min()).days
+        if date_span_days <= 45:
+            freq, date_fmt = 'W', '%b %d'
+            locator = mdates.WeekdayLocator(interval=1)
+        elif date_span_days <= 365:
+            freq, date_fmt = 'ME', '%b %Y'
+            locator = mdates.MonthLocator(interval=1)
+        else:
+            freq, date_fmt = 'QE', '%b %Y'
+            locator = mdates.MonthLocator(interval=3)
+
+        monthly_counts = df.resample(freq)['sentiment'].value_counts().unstack(fill_value=0)
         monthly_totals = monthly_counts.sum(axis=1)
         monthly_percentages = (monthly_counts.T / monthly_totals).T * 100
- 
+
         for sentiment_value in [-1, 0, 1]:
             if sentiment_value not in monthly_percentages.columns:
                 monthly_percentages[sentiment_value] = 0
         monthly_percentages = monthly_percentages[[-1, 0, 1]]
- 
-        fig = plt.figure(figsize=(12, 6))
+
+        BG_COLOR = '#1a1d24'
+        GRID_COLOR = '#3a3f4b'
+        TEXT_COLOR = '#e8e8ea'
+
+        COLORS = {
+            -1: '#ff6384',  # softer red
+            0: '#9aa0ac',   # lighter gray
+            1: '#4ade80',   # softer green
+        }
+
+        fig, ax = plt.subplots(figsize=(11, 5.5))
+        fig.patch.set_facecolor(BG_COLOR)
+        ax.set_facecolor(BG_COLOR)
+
         for sentiment_value in [-1, 0, 1]:
-            plt.plot(
+            ax.plot(
                 monthly_percentages.index,
                 monthly_percentages[sentiment_value],
                 marker='o',
-                linestyle='-',
+                markersize=7,
+                linewidth=2.5,
                 label=SENTIMENT_LABELS[sentiment_value],
-                color=SENTIMENT_COLORS[sentiment_value]
+                color=COLORS[sentiment_value]
             )
- 
-        plt.title('Monthly Sentiment Percentage Over Time')
-        plt.xlabel('Month')
-        plt.ylabel('Percentage of Comments (%)')
-        plt.grid(True)
-        plt.xticks(rotation=45)
- 
-        plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
-        plt.gca().xaxis.set_major_locator(mdates.AutoDateLocator(maxticks=12))
- 
-        plt.legend()
+
+        ax.set_title('Sentiment Over Time', fontsize=16, fontweight='bold', color=TEXT_COLOR, pad=14)
+        ax.set_xlabel('')  # axis label redundant with date-formatted ticks
+        ax.set_ylabel('% of Comments', fontsize=12, color=TEXT_COLOR)
+
+        ax.grid(True, color=GRID_COLOR, alpha=0.5, linewidth=0.7)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_color(GRID_COLOR)
+        ax.spines['bottom'].set_color(GRID_COLOR)
+
+        ax.tick_params(axis='both', colors=TEXT_COLOR, labelsize=11)
+        ax.xaxis.set_major_formatter(mdates.DateFormatter(date_fmt))
+        ax.xaxis.set_major_locator(locator)
+        plt.setp(ax.get_xticklabels(), rotation=30, ha='right')
+
+        legend = ax.legend(
+            loc='upper left', frameon=False, fontsize=11,
+            labelcolor=TEXT_COLOR
+        )
+
         plt.tight_layout()
- 
-        return figure_to_png_response(fig)
+
+        img_io = io.BytesIO()
+        plt.savefig(img_io, format='PNG', facecolor=BG_COLOR, dpi=150)
+        plt.close(fig)
+        img_io.seek(0)
+
+        return send_file(img_io, mimetype='image/png')
     except Exception as e:
         logger.error("Error in /generate_trend_graph: %s", e)
         return jsonify({"error": f"Trend graph generation failed: {str(e)}"}), 500
+
+@app.route('/generate_insights', methods=['POST'])  
+@timed_route
+def generate_insights():
+    try:
+        data = request.get_json(silent=True) or {}
+        predictions = data.get('predictions')  
+        sentiment_counts = data.get('sentiment_counts')
  
+        if not predictions or not sentiment_counts:
+            return jsonify({"error": "predictions and sentiment_counts are required"}), 400
  
+        negative_comments = [p for p in predictions if str(p.get('sentiment')) == '-1']
+        top_negative = max(negative_comments, key=lambda c: c.get('likeCount', 0), default=None)
+ 
+        sample_positive = [p['comment'] for p in predictions if str(p.get('sentiment')) == '1'][:5]
+        sample_negative = [p['comment'] for p in predictions if str(p.get('sentiment')) == '-1'][:5]
+ 
+        total = sum(sentiment_counts.values())
+        pos_pct = round(sentiment_counts.get('1', 0) / total * 100, 1)
+        neu_pct = round(sentiment_counts.get('0', 0) / total * 100, 1)
+        neg_pct = round(sentiment_counts.get('-1', 0) / total * 100, 1)
+ 
+        prompt = f"""You are analyzing YouTube comment sentiment for a content creator.
+ 
+            Sentiment breakdown: {pos_pct}% positive, {neu_pct}% neutral, {neg_pct}% negative.
+            
+            Sample positive comments: {sample_positive}
+            Sample negative comments: {sample_negative}
+            
+            Write a 2-3 sentence summary a creator would actually find useful — call out the
+            overall tone AND any specific recurring complaint or praise you notice in the
+            samples. Be direct and concrete, not generic. No preamble, just the summary."""
+            
+        completion = groq_client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.4,
+            max_tokens=200,
+        )
+        summary = completion.choices[0].message.content.strip()
+ 
+        return jsonify({
+            "summary": summary,
+            "top_negative_comment": top_negative
+        })
+ 
+    except Exception as e:
+        logger.error("Error in /generate_insights: %s", e)
+        return jsonify({"error": f"Insight generation failed: {str(e)}"}), 500
+    
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=False)
  
